@@ -1,9 +1,15 @@
 body {
-	background-color: #CCC;
+	background-color: lightgrey;
+	font-family: sans-serif;
 }
 
 #camera {
 	height: 480px;
-	width: 640px;
 	margin: auto;
+	padding: 1em;
+}
+
+img {
+	display: inline-block;
+	margin: 1em;
 }

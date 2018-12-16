@@ -1,110 +1,146 @@
-# Copyright (c) 2014 Alexander Bredo
-# All rights reserved.
-#
-# Redistribution and use in source and binary forms, with or
-# without modification, are permitted provided that the
-# following conditions are met:
-#
-# 1. Redistributions of source code must retain the above
-# copyright notice, this list of conditions and the following
-# disclaimer.
-#
-# 2. Redistributions in binary form must reproduce the above
-# copyright notice, this list of conditions and the following
-# disclaimer in the documentation and/or other materials
-# provided with the distribution.
-#
-# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
-# CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
-# INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
-# MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
-# DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR
-# CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
-# INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
-# (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE
-# GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR
-# BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
-# LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-# (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
-# OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
-# POSSIBILITY OF SUCH DAMAGE.
-
 import tornado.ioloop
 import tornado.web
-import os, time
+import os
+import time
 
-import datetime, math
+import datetime
+import math
 from PIL import Image, ImageDraw, ImageEnhance
 
+COMPANY_NAME = "ZYCRON"
 
 class CameraImageProcessor():
-	def __init__(self, in_filename, out_filename, width=640, height=480):
-		self.size = (width, height)
-		self.in_filename = in_filename
-		self.out_filename = out_filename
+    def __init__(self, in_filename, out_filename, cam_deg, width=640, height=480):
+        self.size = (width, height)
+        self.in_filename = in_filename
+        self.out_filename = out_filename
+        self.cam_deg = cam_deg
 
-	def process(self, prefix, postfix):
-		now = datetime.datetime.now()
-		original = Image.open(self.in_filename)
-		original.thumbnail(self.size, Image.ANTIALIAS)
-		original = ImageEnhance.Brightness(original).enhance(self.getDaylightIntensity(now.hour)) # overwrite original
-		watermark = Image.new("RGBA", original.size)
-		waterdraw = ImageDraw.ImageDraw(watermark, "RGBA")
-		waterdraw.text((4, 2), "%s @ %s -- %s" % (prefix, now, postfix))
-		original.paste(watermark, None, watermark)
-		original.save(self.out_filename, "JPEG")
+    def get_crop_area(self, cam_deg):
+        x_start = int(640/180 * cam_deg)
+        x_end = int(640/180 * cam_deg) + 480
+        return (x_start, 0, x_end, 480)
 
-	def getDaylightIntensity(self, hour):
-		# D = [0; 24] and W = [0; 1]
-		return 0.45 * math.sin(0.25 * hour + 4.5) + 0.5
+    def process(self, prefix, postfix):
+        now = datetime.datetime.now()
+        original = Image.open(self.in_filename)
+        original = original.crop(self.get_crop_area(self.cam_deg))
+        original = ImageEnhance.Brightness(original).enhance(
+            self.getDaylightIntensity(now.hour))  # overwrite original
+        watermark = Image.new("RGBA", original.size)
+        waterdraw = ImageDraw.ImageDraw(watermark, "RGBA")
+        waterdraw.text((4, 2), "%s @ %s -- %s" % (prefix, now, postfix))
+        original.paste(watermark, None, watermark)
+        original.save(self.out_filename, "JPEG")
 
-class CameraHandler(tornado.web.RequestHandler):
-	BOUNDARY = '--boundarydonotcross'
-	HEADERS = {
+    def getDaylightIntensity(self, hour):
+        # D = [0; 24] and W = [0; 1]
+        return 0.45 * math.sin(0.25 * hour + 4.5) + 0.5
+
+
+cam_deg = 0
+countup = True
+
+class CameraHandler1(tornado.web.RequestHandler):
+    BOUNDARY = '--boundarydonotcross'
+    HEADERS = {
         'Cache-Control': 'no-store, no-cache, must-revalidate, pre-check=0, post-check=0, max-age=0',
         'Connection': 'close',
         'Expires': 'Mon, 3 Jan 2000 12:34:56 GMT',
         'Pragma': 'no-cache'
     }
 
-	def get(self):
-		for hk, hv in CameraHandler.HEADERS.items():
-			self.set_header(hk, hv)
+    def get(self):
+        global cam_deg
+        global countup
 
-		# TODO: Do not process if current
-		cip = CameraImageProcessor("img/Lighthouse.jpg", "img/camera.jpg")
-		cip.process("CAM3: COMPANY Facility Management", "(c) 2014 by COMPANY Engineering AG")
+        for hk, hv in CameraHandler1.HEADERS.items():
+            self.set_header(hk, hv)
 
-		img_filename = "img/camera.jpg"
-		for hk, hv in self.image_headers(img_filename).items():
-			self.set_header(hk, hv)
+        cip = CameraImageProcessor("img/raw_1.jpg", "img/camera1.jpg", cam_deg)
+        cip.process("SWAT CAM1: "+COMPANY_NAME+" FM",
+                    "(c) 2018 by "+COMPANY_NAME+" Pte Ltd")
+					
+        if (cam_deg <= 180 and countup == True):
+            cam_deg += 10
+            countup = True
+            if cam_deg == 180:
+                countup = False
 
-		with open(img_filename, "rb") as f:
-			self.write(f.read())
+        elif (cam_deg >=0 and countup == False):
+            cam_deg -= 10
+            countup = False
+            if cam_deg == 0:
+                countup = True
 
-	def image_headers(self, filename):
-		return {
-			'X-Timestamp': int(time.time()),
-			'Content-Length': os.path.getsize(filename),
-			'Content-Type': 'image/jpeg',
-		}
+        img_filename = "img/camera1.jpg"
+        for hk, hv in self.image_headers(img_filename).items():
+            self.set_header(hk, hv)
+
+        with open(img_filename, "rb") as f:
+            self.write(f.read())
+
+    def image_headers(self, filename):
+        return {
+            'X-Timestamp': int(time.time()),
+            'Content-Length': os.path.getsize(filename),
+            'Content-Type': 'image/jpeg',
+        }
+
+class CameraHandler2(tornado.web.RequestHandler):
+    BOUNDARY = '--boundarydonotcross'
+    HEADERS = {
+        'Cache-Control': 'no-store, no-cache, must-revalidate, pre-check=0, post-check=0, max-age=0',
+        'Connection': 'close',
+        'Expires': 'Mon, 3 Jan 2000 12:34:56 GMT',
+        'Pragma': 'no-cache'
+    }
+
+    def get(self):
+        global cam_deg
+        global countup
+
+        for hk, hv in CameraHandler2.HEADERS.items():
+            self.set_header(hk, hv)
+
+        cip = CameraImageProcessor("img/raw_2.jpg", "img/camera2.jpg", 180-cam_deg)
+        cip.process("SWAT CAM2: "+COMPANY_NAME+" FM",
+                    "(c) 2018 by "+COMPANY_NAME+" Pte Ltd")
+					
+        img_filename = "img/camera2.jpg"
+        for hk, hv in self.image_headers(img_filename).items():
+            self.set_header(hk, hv)
+
+        with open(img_filename, "rb") as f:
+            self.write(f.read())
+
+    def image_headers(self, filename):
+        return {
+            'X-Timestamp': int(time.time()),
+            'Content-Length': os.path.getsize(filename),
+            'Content-Type': 'image/jpeg',
+        }
+
 
 class RootHandler(tornado.web.RequestHandler):
-	settings = {
-		'title': 'COMPANY Facility Management',
-		'refresh': 5,
-	}
+    settings = {
+        'title': COMPANY_NAME+" Facility Management",
+        'refresh': 1,
+    }
 
-	def get(self):
-		return self.render("templates/index.html", page=RootHandler.settings)
+    def get(self):
+        return self.render("templates/index.html", page=RootHandler.settings)
+
 
 application = tornado.web.Application([
-	(r'/camera.jpg', CameraHandler),
-	(r'/', RootHandler),
-	(r'/(favicon\.ico)', tornado.web.StaticFileHandler, {'path': 'static/'}),
-	(r'/static/(.*)', tornado.web.StaticFileHandler, {'path': 'static/'}),
+    (r'/camera1.jpg', CameraHandler1),
+	(r'/camera2.jpg', CameraHandler2),
+    (r'/', RootHandler),
+    (r'/(favicon\.ico)', tornado.web.StaticFileHandler,
+     {'path': 'static/'}),
+    (r'/static/(.*)', tornado.web.StaticFileHandler, {'path': 'static/'}),
 ])
 
 if __name__ == "__main__":
-	application.listen(80)
-	tornado.ioloop.IOLoop.instance().start()
+    application.listen(80)
+    tornado.ioloop.IOLoop.instance().start()
