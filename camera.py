@@ -17,16 +17,16 @@ class CameraImageProcessor():
         self.cam_deg = cam_deg
 
     def get_crop_area(self, cam_deg):
-        x_start = int(640/180 * cam_deg)
-        x_end = int(640/180 * cam_deg) + 480
+        x_start = int(960/180 * cam_deg)
+        x_end = x_start + 480
         return (x_start, 0, x_end, 480)
 
     def process(self, prefix, postfix):
         now = datetime.datetime.now()
         original = Image.open(self.in_filename)
         original = original.crop(self.get_crop_area(self.cam_deg))
-        original = ImageEnhance.Brightness(original).enhance(
-            self.getDaylightIntensity(now.hour))  # overwrite original
+        #original = ImageEnhance.Brightness(original).enhance(
+        #    self.getDaylightIntensity(now.hour))  # overwrite original
         watermark = Image.new("RGBA", original.size)
         waterdraw = ImageDraw.ImageDraw(watermark, "RGBA")
         waterdraw.text((4, 2), "%s @ %s -- %s" % (prefix, now, postfix))
